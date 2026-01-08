@@ -260,6 +260,70 @@ app.post('/api/admin/prizes', async (req, res) => {
     }
 });
 
+// --- Missing GET Routes for Admin Panel ---
+
+// Get Prizes (Admin)
+app.get('/api/admin/prizes', async (req, res) => {
+    try {
+        let config = await Config.findOne();
+        if (!config) {
+            // Return defaults if no config exists
+            return res.json({
+                success: true,
+                prizes: {
+                    en: ["500 MMK", "1,000 MMK", "2,000 MMK", "3,000 MMK", "5,000 MMK", "10,000 MMK", "15,000 MMK", "30,000 MMK", "100,000 MMK"],
+                    mm: ["၅၀၀ ကျပ်", "၁၀၀၀ ကျပ်", "၂၀၀၀ ကျပ်", "၃၀၀၀ ကျပ်", "၅၀၀၀ ကျပ်", "၁၀၀၀၀ ကျပ်", "၁၅၀၀၀ ကျပ်", "၃၀၀၀၀ ကျပ်", "၁၀၀၀၀၀ ကျပ်"]
+                }
+            });
+        }
+        res.json({ success: true, prizes: config.prizes });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get Probabilities (Admin)
+app.get('/api/admin/probabilities', async (req, res) => {
+    try {
+        let config = await Config.findOne();
+        // Default probabilities if null
+        const defaultProbs = [30, 20, 40, 30, 1, 0.1, 0.01, 0.001, 0.0001];
+
+        if (!config) {
+            return res.json({ success: true, probabilities: defaultProbs });
+        }
+        res.json({ success: true, probabilities: config.probabilities || defaultProbs });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Get Counter (Admin)
+app.get('/api/admin/counter', async (req, res) => {
+    try {
+        let counter = await Counter.findOne({ name: 'main' });
+        const dbSpins = await Spin.countDocuments();
+
+        // Default if not exists
+        if (!counter) {
+            counter = { baseCounter: 1958 };
+        }
+
+        const displayedTotal = (counter.baseCounter || 1958) + dbSpins;
+
+        res.json({
+            success: true,
+            counter: {
+                displayedTotal,
+                baseCounter: counter.baseCounter || 1958,
+                dbSpins
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Update Base Counter
 app.post('/api/admin/counter/set-base', async (req, res) => {
     try {
