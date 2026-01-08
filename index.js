@@ -30,7 +30,8 @@ const ConfigSchema = new mongoose.Schema({
         en: [String],
         mm: [String]
     },
-    probabilities: [Number]
+    probabilities: [Number],
+    winnerBoardMode: { type: String, default: 'real' } // 'real' or 'demo'
 });
 
 const CounterSchema = new mongoose.Schema({
@@ -107,7 +108,8 @@ app.get('/api/config', async (req, res) => {
                     en: ["500 MMK", "1,000 MMK", "2,000 MMK", "3,000 MMK", "5,000 MMK", "10,000 MMK", "15,000 MMK", "30,000 MMK", "100,000 MMK"],
                     mm: ["၅၀၀ ကျပ်", "၁၀၀၀ ကျပ်", "၂၀၀၀ ကျပ်", "၃၀၀၀ ကျပ်", "၅၀၀၀ ကျပ်", "၁၀၀၀၀ ကျပ်", "၁၅၀၀၀ ကျပ်", "၃၀၀၀၀ ကျပ်", "၁၀၀၀၀၀ ကျပ်"]
                 },
-                probabilities: [30, 20, 40, 30, 1, 0.1, 0.01, 0.001, 0.0001]
+                probabilities: [30, 20, 40, 30, 1, 0.1, 0.01, 0.001, 0.0001],
+                winnerBoardMode: 'real'
             });
             await config.save();
         }
@@ -255,6 +257,20 @@ app.post('/api/admin/prizes', async (req, res) => {
         config.prizes = prizes;
         await config.save();
         res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Update Winner Board Mode
+app.post('/api/admin/mode', async (req, res) => {
+    try {
+        const { mode } = req.body; // 'real' or 'demo'
+        let config = await Config.findOne();
+        if (!config) { config = new Config(); }
+        config.winnerBoardMode = mode;
+        await config.save();
+        res.json({ success: true, mode: config.winnerBoardMode });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
