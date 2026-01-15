@@ -188,7 +188,8 @@ app.get('/api/admin/stats', async (req, res) => {
         const spins = await Spin.find(query);
         const totalPrizesCode = spins.reduce((sum, s) => {
             // Extract number from prize string (e.g. "1,000 MMK" -> 1000)
-            const amount = parseInt(s.prize.replace(/[^0-9]/g, '')) || 0;
+            if (!s.prize) return sum;
+            const amount = parseInt(s.prize.toString().replace(/[^0-9]/g, '')) || 0;
             return sum + amount;
         }, 0);
 
