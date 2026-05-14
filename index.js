@@ -57,10 +57,11 @@ app.get('/api/spins', async (req, res) => {
         }
 
         if (dateFilter) {
-            const start = new Date(dateFilter);
-            start.setHours(0, 0, 0, 0);
-            const end = new Date(dateFilter);
-            end.setHours(23, 59, 59, 999);
+            // Expand range by ±1 day to handle timezone offsets (e.g. Myanmar UTC+6:30)
+            const start = new Date(dateFilter + 'T00:00:00.000Z');
+            start.setDate(start.getDate() - 1);
+            const end = new Date(dateFilter + 'T23:59:59.999Z');
+            end.setDate(end.getDate() + 1);
             query.date = { $gte: start, $lte: end };
         }
 
@@ -75,6 +76,11 @@ app.get('/api/spins', async (req, res) => {
 app.post('/api/spin', async (req, res) => {
     try {
         const { username, prize, device, ipAddress, os } = req.body;
+
+        // Reject if prize is missing or undefined
+        if (!prize || prize === 'undefined') {
+            return res.status(400).json({ success: false, error: 'Invalid prize value' });
+        }
 
         // Check if user already spun (optional strict check)
         const existing = await Spin.findOne({ username: { $regex: new RegExp(`^${username}$`, 'i') } });
@@ -101,18 +107,27 @@ app.post('/api/spin', async (req, res) => {
 app.get('/api/config', async (req, res) => {
     try {
         let config = await Config.findOne();
+        const defaultPrizes = {
+            en: ["500 MMK", "1,000 MMK", "2,000 MMK", "3,000 MMK", "5,000 MMK", "10,000 MMK", "15,000 MMK", "30,000 MMK", "100,000 MMK"],
+            mm: ["\u1045\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1042\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1043\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1045\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1040\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1045\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1043\u1040\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1040\u1040\u1040\u1040\u1040 \u1000\u103b\u1015\u103a"]
+        };
+        const defaultProbs = [30, 20, 40, 30, 1, 0.1, 0.01, 0.001, 0.0001];
+
         if (!config) {
-            // Create default if not exists
-            config = new Config({
-                prizes: {
-                    en: ["500 MMK", "1,000 MMK", "2,000 MMK", "3,000 MMK", "5,000 MMK", "10,000 MMK", "15,000 MMK", "30,000 MMK", "100,000 MMK"],
-                    mm: ["၅၀၀ ကျပ်", "၁၀၀၀ ကျပ်", "၂၀၀၀ ကျပ်", "၃၀၀၀ ကျပ်", "၅၀၀၀ ကျပ်", "၁၀၀၀၀ ကျပ်", "၁၅၀၀၀ ကျပ်", "၃၀၀၀၀ ကျပ်", "၁၀၀၀၀၀ ကျပ်"]
-                },
-                probabilities: [30, 20, 40, 30, 1, 0.1, 0.01, 0.001, 0.0001],
-                winnerBoardMode: 'real'
-            });
+            config = new Config({ prizes: defaultPrizes, probabilities: defaultProbs, winnerBoardMode: 'real' });
             await config.save();
         }
+
+        // Auto-fix if prizes are missing or corrupted (wrong length)
+        const enOk = config.prizes && config.prizes.en && config.prizes.en.length === 9;
+        const mmOk = config.prizes && config.prizes.mm && config.prizes.mm.length === 9;
+        const probsOk = config.probabilities && config.probabilities.length === 9;
+        if (!enOk || !mmOk || !probsOk) {
+            config.prizes = defaultPrizes;
+            config.probabilities = defaultProbs;
+            await config.save();
+        }
+
         res.json({ success: true, config });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -150,6 +165,35 @@ app.get('/api/winner-board', async (req, res) => {
         }));
 
         res.json({ success: true, winners: formattedWinners, mode: 'real' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Cleanup: remove spins with undefined/missing prize
+app.delete('/api/admin/cleanup-invalid', async (req, res) => {
+    try {
+        const result = await Spin.deleteMany({ $or: [{ prize: null }, { prize: 'undefined' }, { prize: '' }] });
+        res.json({ success: true, deletedCount: result.deletedCount });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Force reset config to defaults (fixes corrupted MongoDB config)
+app.post('/api/admin/reset-config', async (req, res) => {
+    try {
+        await Config.deleteMany({});
+        const config = new Config({
+            prizes: {
+                en: ["500 MMK", "1,000 MMK", "2,000 MMK", "3,000 MMK", "5,000 MMK", "10,000 MMK", "15,000 MMK", "30,000 MMK", "100,000 MMK"],
+                mm: ["\u1045\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1042\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1043\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1045\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1040\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1045\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1043\u1040\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1040\u1040\u1040\u1040\u1040 \u1000\u103b\u1015\u103a"]
+            },
+            probabilities: [30, 20, 40, 30, 1, 0.1, 0.01, 0.001, 0.0001],
+            winnerBoardMode: 'real'
+        });
+        await config.save();
+        res.json({ success: true, message: 'Config reset to defaults', config });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
