@@ -181,6 +181,25 @@ app.delete('/api/admin/cleanup-invalid', async (req, res) => {
 });
 
 // Force reset config to defaults (fixes corrupted MongoDB config)
+// GET version so you can trigger it directly from browser
+app.get('/api/admin/reset-config', async (req, res) => {
+    try {
+        await Config.deleteMany({});
+        const config = new Config({
+            prizes: {
+                en: ["500 MMK", "1,000 MMK", "2,000 MMK", "3,000 MMK", "5,000 MMK", "10,000 MMK", "15,000 MMK", "30,000 MMK", "100,000 MMK"],
+                mm: ["\u1045\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1042\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1043\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1045\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1040\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1045\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1043\u1040\u1040\u1040\u1040 \u1000\u103b\u1015\u103a", "\u1041\u1040\u1040\u1040\u1040\u1040 \u1000\u103b\u1015\u103a"]
+            },
+            probabilities: [30, 20, 40, 30, 1, 0.1, 0.01, 0.001, 0.0001],
+            winnerBoardMode: 'real'
+        });
+        await config.save();
+        res.json({ success: true, message: 'Config reset to defaults', config });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.post('/api/admin/reset-config', async (req, res) => {
     try {
         await Config.deleteMany({});
@@ -194,6 +213,16 @@ app.post('/api/admin/reset-config', async (req, res) => {
         });
         await config.save();
         res.json({ success: true, message: 'Config reset to defaults', config });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Cleanup invalid spins — GET version for browser access
+app.get('/api/admin/cleanup-invalid', async (req, res) => {
+    try {
+        const result = await Spin.deleteMany({ $or: [{ prize: null }, { prize: 'undefined' }, { prize: '' }] });
+        res.json({ success: true, deletedCount: result.deletedCount });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
